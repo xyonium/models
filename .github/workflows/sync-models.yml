@@ -1,0 +1,56 @@
+# 放到 fork 的 .github/workflows/sync-models.yml
+#
+# 作用：每 6 小时把上游 router-for-me/models 的 models.json 拉下来，
+# 叠加本地 aistudio 覆盖条目，提交到 fork 的 `catalog` 分支。
+# PR 分支保持干净，不混入本地私有改动。
+
+name: sync-models
+
+on:
+  schedule:
+    - cron: "23 */6 * * *"   # 每 6 小时；避开整点拥堵
+  workflow_dispatch:          # 也支持手动触发
+
+permissions:
+  contents: write
+
+concurrency:
+  group: sync-models
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Switch to catalog branch
+        run: |
+          # 其他分支默认不在本地，先显式抓一次
+          git fetch origin catalog:catalog 2>/dev/null || true
+          git checkout catalog 2>/dev/null || git checkout -b catalog
+
+      - name: Fetch upstream catalog
+        run: |
+          curl -fsSL -o /tmp/models.upstream.json \
+            https://raw.githubusercontent.com/router-for-me/models/refs/heads/main/models.json
+          # 上游结构异常（比如少了 aistudio 分节）时脚本会自锁退出，不会写出坏文件
+          python3 -c "import json;json.load(open('/tmp/models.upstream.json'))"
+
+      - name: Apply local overrides
+        run: python3 scripts/upsert-models.py /tmp/models.upstream.json models.json
+
+      - name: Commit if changed
+        run: |
+          if git diff --quiet -- models.json; then
+            echo "catalog unchanged, nothing to do"
+            exit 0
+          fi
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add models.json
+          git commit -m "chore(models): sync upstream catalog + local aistudio overrides"
+          git push origin catalog
