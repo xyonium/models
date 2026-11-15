@@ -1863,7 +1863,8 @@
         "levels": [
           "low",
           "medium",
-          "high"
+          "high",
+          "xhigh"
         ]
       },
       "supportedInputModalities": [
@@ -2877,7 +2878,8 @@
         "levels": [
           "low",
           "medium",
-          "high"
+          "high",
+          "xhigh"
         ]
       },
       "supportedInputModalities": [
